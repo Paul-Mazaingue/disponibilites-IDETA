@@ -1,0 +1,9 @@
+.env
+secret.key
+credentials.enc
+
+# Ignore Python cache files
+__pycache__/
+*.py[cod]
+# Ignore virtual environment directories
+venv/
