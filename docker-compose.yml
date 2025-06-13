@@ -1,0 +1,17 @@
+version: '3'
+
+services:
+  disponibilites-app:
+    build: .
+    container_name: disponibilites-app
+    volumes:
+      - ./credentials.enc:/app/credentials.enc:ro
+      - ${RCLONE_CONFIG_PATH:-~/.config/rclone}:/root/.config/rclone
+    environment:
+      - RCLONE_REMOTE=${RCLONE_REMOTE:-dispo}
+      - FOLDER_DEMANDES=${FOLDER_DEMANDES:-Partage/Demandes}
+      - FOLDER_REPONSES=${FOLDER_REPONSES:-Partage/Réponses}
+      - TIMEZONE=${TIMEZONE:-Europe/Paris}
+      - EXCHANGE_SERVER=${EXCHANGE_SERVER}
+      - EXCHANGE_SECRET_KEY=${EXCHANGE_SECRET_KEY}
+    restart: unless-stopped
