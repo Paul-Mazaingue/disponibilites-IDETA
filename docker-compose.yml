@@ -5,7 +5,6 @@ services:
     build: .
     container_name: disponibilites-app
     volumes:
-      - ./credentials.enc:/app/credentials.enc:ro
       - ${RCLONE_CONFIG_PATH:-~/.config/rclone}:/root/.config/rclone
     environment:
       - RCLONE_REMOTE=${RCLONE_REMOTE:-dispo}
