@@ -1,13 +1,14 @@
 import os
 import json
 import tempfile
-from datetime import datetime, timedelta
 import pytz
 import time
 from rclone import rclone_lsjson, rclone_copy, rclone_upload, rclone_delete
 from getCalendar import get_specific_period_events
 from dotenv import load_dotenv
-
+from datetime import datetime, timedelta
+from pytz import timezone
+from exchangelib.ewsdatetime import EWSDateTime, EWSDate
 # Charger les variables d'environnement
 load_dotenv()
 
@@ -17,6 +18,7 @@ FOLDER_REPONSES = os.getenv("FOLDER_REPONSES")
 TIMEZONE = pytz.timezone(os.getenv("TIMEZONE", "Europe/Paris"))
 
 tmp_dir = tempfile.mkdtemp()
+UTC = pytz.utc
 
 def normaliser_heure(valeur, par_defaut="09:00"):
     print(f"Normalisation de l'heure : {valeur}, par défaut : {par_defaut}")
@@ -32,66 +34,78 @@ def normaliser_heure(valeur, par_defaut="09:00"):
     return f"{heures:02d}:{minutes:02d}"
 
 def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree):
-    dispo = []
+    busy = []
+    # 1) normaliser tous les events en datetime Europe/Paris
+    for ev in events:
+        s0, e0 = ev.start, ev.end
+
+        # a) EWSDate (date-only) → datetime à minuit
+        if isinstance(s0, EWSDate) and not isinstance(s0, EWSDateTime):
+            s_py = datetime(s0.year, s0.month, s0.day,    0, 0)
+            e_py = datetime(e0.year, e0.month, e0.day,    0, 0)
+
+        # b) EWSDateTime → Python datetime via ISO
+        elif isinstance(s0, EWSDateTime):
+            s_py = datetime.fromisoformat(s0.isoformat())
+            e_py = datetime.fromisoformat(e0.isoformat())
+
+        # c) sinon c’est déjà un datetime Python
+        else:
+            s_py, e_py = s0, e0
+
+        # 2) localiser ou convertir en Europe/Paris
+        if s_py.tzinfo is None:
+            s_loc = TIMEZONE.localize(s_py)
+            e_loc = TIMEZONE.localize(e_py)
+        else:
+            s_loc = s_py.astimezone(TIMEZONE)
+            e_loc = e_py.astimezone(TIMEZONE)
+
+        busy.append((s_loc, e_loc))
+
+    # 3) trier par début
+    busy.sort(key=lambda x: x[0])
+
+    disponibilites = []
     jour = debut
-
     while jour <= fin:
-        h_debut = TIMEZONE.localize(datetime.combine(jour, heure_debut))
-        h_fin = TIMEZONE.localize(datetime.combine(jour, heure_fin))
+        # fenêtre de travail pour ce jour
+        base_debut = TIMEZONE.localize(datetime.combine(jour, heure_debut))
+        base_fin   = TIMEZONE.localize(datetime.combine(jour, heure_fin))
 
-        evts_jour = []
-        for e in events:
-            # Ignorer les événements toute la journée (all day)
-            if getattr(e, "is_all_day", False):
+        # 4) intersection des events avec la fenêtre
+        today = []
+        for s, e in busy:
+            if e <= base_debut or s >= base_fin:
                 continue
+            today.append((max(s, base_debut), min(e, base_fin)))
 
-            # Gérer proprement EWSDate vs EWSDateTime
-            try:
-                e_debut = e.start.datetime if hasattr(e.start, "datetime") else e.start
-                e_fin = e.end.datetime if hasattr(e.end, "datetime") else e.end
-            except AttributeError:
-                continue  # on saute l'événement s'il est mal formé
-
-            if isinstance(e_debut, datetime):
-                if e_debut.tzinfo is None:
-                    e_debut = TIMEZONE.localize(e_debut)
-                else:
-                    e_debut = e_debut.astimezone(TIMEZONE)
+        # 5) fusion des créneaux occupés
+        merged = []
+        for s2, e2 in sorted(today, key=lambda x: x[0]):
+            if not merged or s2 > merged[-1][1]:
+                merged.append([s2, e2])
             else:
-                # Cas rare d'EWSDate (on ignore)
-                continue
+                merged[-1][1] = max(merged[-1][1], e2)
 
-            if isinstance(e_fin, datetime):
-                if e_fin.tzinfo is None:
-                    e_fin = TIMEZONE.localize(e_fin)
-                else:
-                    e_fin = e_fin.astimezone(TIMEZONE)
-            else:
-                continue
+        # 6) chercher les intervalles libres, clamp et filtrage par durée
+        def add_slot(start, end):
+            sc = max(start, base_debut)
+            ec = min(end,   base_fin)
+            if (ec - sc) >= duree:
+                disponibilites.append((sc, ec))
 
-            if e_debut.date() == jour:
-                nom = e.subject if hasattr(e, "subject") else "Sans titre"
-                evts_jour.append((e_debut, e_fin, nom))
-
-        evts_jour.sort(key=lambda x: x[0])
-
-        curseur = h_debut
-        for e_debut, e_fin, nom in evts_jour:
-            print("Événement:", nom)
-            print(" - Début :", e_debut)
-            print(" - Fin   :", e_fin)
-
-            if (e_debut - curseur) >= duree:
-                dispo.append((curseur, e_debut))
-
-            curseur = max(curseur, e_fin)
-
-        if (h_fin - curseur) >= duree:
-            dispo.append((curseur, h_fin))
+        if not merged:
+            add_slot(base_debut, base_fin)
+        else:
+            add_slot(base_debut,         merged[0][0])
+            for i in range(len(merged)-1):
+                add_slot(merged[i][1], merged[i+1][0])
+            add_slot(merged[-1][1],     base_fin)
 
         jour += timedelta(days=1)
 
-    return dispo
+    return disponibilites
 
 
 def traiter_fichier(demande_nom):
@@ -124,6 +138,11 @@ def traiter_fichier(demande_nom):
     # Find available time slots
     dispo = trouver_disponibilites(events, debut, fin, h_debut, h_fin, duree)
 
+    for d1, d2 in dispo:
+        print(f"Créneau disponible : {d1.strftime('%d/%m/%Y à %H:%M')} à {d2.strftime('%H:%M')}")
+
+    return dispo
+
     # Message to be sent
     lignes = [
         f"Information recherche : Début : {data['date']} Fin : {data['date_1']} Durée : {data['duree']} h",
@@ -145,9 +164,17 @@ def traiter_fichier(demande_nom):
     print(f"✅ Réponse générée pour : {id_req}")
 
 if __name__ == "__main__":
+
+    demandes = rclone_lsjson(FOLDER_DEMANDES)
+    for f in demandes:
+        if f["Name"].startswith("demande_") and f["Name"].endswith(".json"):
+            traiter_fichier(f["Name"])
+
+    """
     while True:
         demandes = rclone_lsjson(FOLDER_DEMANDES)
         for f in demandes:
             if f["Name"].startswith("demande_") and f["Name"].endswith(".json"):
                 traiter_fichier(f["Name"])
-        time.sleep(2)
+        time.sleep(1000)
+    """

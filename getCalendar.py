@@ -166,7 +166,7 @@ def get_specific_period_events(start_year=2025, start_month=6, start_day=2,
     
     tz = EWSTimeZone('Europe/Paris')
     start = EWSDateTime(start_year, start_month, start_day, tzinfo=tz)
-    end = EWSDateTime(end_year, end_month, end_day, tzinfo=tz)
+    end = EWSDateTime(end_year, end_month, end_day, 23, 59, 59, tzinfo=tz)
     
     # Validate that end date is after start date
     if end < start:

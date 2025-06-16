@@ -17,7 +17,7 @@
 ##
 ## Voir pour retirer les week-ends
 ## Ajouter la possibilité de supprimer des jours
-##
+## Faire en sorte qu'on puise mettre des nombre à virgule pour la durée
 ##
 ##
 ##
@@ -55,4 +55,4 @@ if __name__ == "__main__":
         for f in demandes:
             if f["Name"].startswith("demande_") and f["Name"].endswith(".json"):
                 traiter_fichier(f["Name"])
-        time.sleep(2)
+        time.sleep(2000)
