@@ -39,10 +39,10 @@ def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree):
     for ev in events:
         s0, e0 = ev.start, ev.end
 
-        # a) EWSDate (date-only) → datetime à minuit
+        # a) EWSDate (date-only) → bloquer toute la journée
         if isinstance(s0, EWSDate) and not isinstance(s0, EWSDateTime):
-            s_py = datetime(s0.year, s0.month, s0.day,    0, 0)
-            e_py = datetime(e0.year, e0.month, e0.day,    0, 0)
+            s_py = datetime(s0.year, s0.month, s0.day, 0, 0)
+            e_py = datetime(e0.year, e0.month, e0.day, 0, 0) + timedelta(days=1)
 
         # b) EWSDateTime → Python datetime via ISO
         elif isinstance(s0, EWSDateTime):
@@ -74,11 +74,11 @@ def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree):
         base_fin   = TIMEZONE.localize(datetime.combine(jour, heure_fin))
 
         # 4) intersection des events avec la fenêtre
-        today = []
-        for s, e in busy:
-            if e <= base_debut or s >= base_fin:
-                continue
-            today.append((max(s, base_debut), min(e, base_fin)))
+        today = [
+            (max(s, base_debut), min(e, base_fin))
+            for s, e in busy
+            if e > base_debut and s < base_fin
+        ]
 
         # 5) fusion des créneaux occupés
         merged = []
@@ -106,7 +106,6 @@ def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree):
         jour += timedelta(days=1)
 
     return disponibilites
-
 
 def traiter_fichier(demande_nom):
     # id of the request
@@ -137,11 +136,6 @@ def traiter_fichier(demande_nom):
 
     # Find available time slots
     dispo = trouver_disponibilites(events, debut, fin, h_debut, h_fin, duree)
-
-    for d1, d2 in dispo:
-        print(f"Créneau disponible : {d1.strftime('%d/%m/%Y à %H:%M')} à {d2.strftime('%H:%M')}")
-
-    return dispo
 
     # Message to be sent
     lignes = [
