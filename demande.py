@@ -33,9 +33,24 @@ def normaliser_heure(valeur, par_defaut="09:00"):
         minutes = int(parties[1])
     return f"{heures:02d}:{minutes:02d}"
 
-def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree, weekend):
+def trouver_disponibilites(events,
+                           debut,
+                           fin,
+                           heure_debut,
+                           heure_fin,
+                           duree,
+                           weekend,
+                           excludedDates):
+    """
+    events: liste d'événements Exchange
+    debut, fin: dates (date objects)
+    heure_debut, heure_fin: hours (time objects)
+    duree: timedelta
+    weekend: bool – si False, on saute samedis et dimanches
+    excludedDates: liste de date objects à exclure
+    """
     busy = []
-    # 1) normaliser tous les events en datetime Europe/Paris
+    # 1) normalisation des events en datetime Europe/Paris
     for ev in events:
         s0, e0 = ev.start, ev.end
 
@@ -63,29 +78,34 @@ def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree, we
 
         busy.append((s_loc, e_loc))
 
-    # 3) trier par début
+    # 3) trier par heure de début
     busy.sort(key=lambda x: x[0])
 
     disponibilites = []
     jour = debut
     while jour <= fin:
-        # Si on exclut le week-end, sauter samedi (5) et dimanche (6)
+        # 4a) exclure les dates marquées
+        if jour in excludedDates:
+            jour += timedelta(days=1)
+            continue
+
+        # 4b) exclure le weekend si demandé
         if not weekend and jour.weekday() >= 5:
             jour += timedelta(days=1)
             continue
 
-        # fenêtre de travail pour ce jour
+        # 5) fenêtre de travail pour ce jour
         base_debut = TIMEZONE.localize(datetime.combine(jour, heure_debut))
         base_fin   = TIMEZONE.localize(datetime.combine(jour, heure_fin))
 
-        # 4) intersection des events avec la fenêtre
+        # 6) intersection des events avec la fenêtre
         today = [
             (max(s, base_debut), min(e, base_fin))
             for s, e in busy
             if e > base_debut and s < base_fin
         ]
 
-        # 5) fusion des créneaux occupés
+        # 7) fusion des créneaux occupés
         merged = []
         for s2, e2 in sorted(today, key=lambda x: x[0]):
             if not merged or s2 > merged[-1][1]:
@@ -93,7 +113,7 @@ def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree, we
             else:
                 merged[-1][1] = max(merged[-1][1], e2)
 
-        # 6) chercher les intervalles libres, clamp et filtrage par durée
+        # 8) chercher les créneaux libres, clamp + filtre durée
         def add_slot(start, end):
             sc = max(start, base_debut)
             ec = min(end,   base_fin)
@@ -111,8 +131,6 @@ def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree, we
         jour += timedelta(days=1)
 
     return disponibilites
-
-
 
 
 def traiter_fichier(demande_nom):
@@ -136,6 +154,12 @@ def traiter_fichier(demande_nom):
     h_debut = datetime.strptime(normaliser_heure(data.get("heureDebutTravail", "09:00"), "09:00"), "%H:%M").time()
     h_fin = datetime.strptime(normaliser_heure(data.get("heureFinTravail", "18:00"), "18:00"), "%H:%M").time()
     weekend = data.get("weekend", "false").lower() == "true"
+    # Parse excludedDates from the request (format: '11-05-2025,12-05-2025')
+    excludedDates = [
+        datetime.strptime(date_str.strip(), "%d-%m-%Y").date()
+        for date_str in data.get("excludedDates", "").split(",")
+        if date_str.strip()
+    ]
 
     # Get events from the calendar for the specified period
     events = get_specific_period_events(
@@ -144,7 +168,7 @@ def traiter_fichier(demande_nom):
     )
 
     # Find available time slots
-    dispo = trouver_disponibilites(events, debut, fin, h_debut, h_fin, duree, weekend)
+    dispo = trouver_disponibilites(events, debut, fin, h_debut, h_fin, duree, weekend, excludedDates)
 
     # Message to be sent
     lignes = [

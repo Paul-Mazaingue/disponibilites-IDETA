@@ -15,8 +15,7 @@
 ##
 ##
 ##
-## Voir pour retirer les week-ends
-## Ajouter la possibilité de supprimer des jours
+## 
 ## Faire en sorte qu'on puise mettre des nombre à virgule pour la durée
 ## Supprimer le fichier réponse une fois la demande traitée sur power automate
 ##
