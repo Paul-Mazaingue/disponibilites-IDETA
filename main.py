@@ -16,9 +16,8 @@
 ##
 ##
 ## 
-## Faire en sorte qu'on puise mettre des nombre à virgule pour la durée
 ## Supprimer le fichier réponse une fois la demande traitée sur power automate
-##
+## Ajouter un envoie d'erreur si le récupération du planning échoue
 ##
 ##
 ##
