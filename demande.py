@@ -33,7 +33,7 @@ def normaliser_heure(valeur, par_defaut="09:00"):
         minutes = int(parties[1])
     return f"{heures:02d}:{minutes:02d}"
 
-def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree):
+def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree, weekend):
     busy = []
     # 1) normaliser tous les events en datetime Europe/Paris
     for ev in events:
@@ -69,6 +69,11 @@ def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree):
     disponibilites = []
     jour = debut
     while jour <= fin:
+        # Si on exclut le week-end, sauter samedi (5) et dimanche (6)
+        if not weekend and jour.weekday() >= 5:
+            jour += timedelta(days=1)
+            continue
+
         # fenêtre de travail pour ce jour
         base_debut = TIMEZONE.localize(datetime.combine(jour, heure_debut))
         base_fin   = TIMEZONE.localize(datetime.combine(jour, heure_fin))
@@ -99,13 +104,16 @@ def trouver_disponibilites(events, debut, fin, heure_debut, heure_fin, duree):
             add_slot(base_debut, base_fin)
         else:
             add_slot(base_debut,         merged[0][0])
-            for i in range(len(merged)-1):
-                add_slot(merged[i][1], merged[i+1][0])
+            for i in range(len(merged) - 1):
+                add_slot(merged[i][1], merged[i + 1][0])
             add_slot(merged[-1][1],     base_fin)
 
         jour += timedelta(days=1)
 
     return disponibilites
+
+
+
 
 def traiter_fichier(demande_nom):
     # id of the request
@@ -127,6 +135,7 @@ def traiter_fichier(demande_nom):
     duree = timedelta(hours=float(data["duree"]))
     h_debut = datetime.strptime(normaliser_heure(data.get("heureDebutTravail", "09:00"), "09:00"), "%H:%M").time()
     h_fin = datetime.strptime(normaliser_heure(data.get("heureFinTravail", "18:00"), "18:00"), "%H:%M").time()
+    weekend = data.get("weekend", "false").lower() == "true"
 
     # Get events from the calendar for the specified period
     events = get_specific_period_events(
@@ -135,7 +144,7 @@ def traiter_fichier(demande_nom):
     )
 
     # Find available time slots
-    dispo = trouver_disponibilites(events, debut, fin, h_debut, h_fin, duree)
+    dispo = trouver_disponibilites(events, debut, fin, h_debut, h_fin, duree, weekend)
 
     # Message to be sent
     lignes = [
