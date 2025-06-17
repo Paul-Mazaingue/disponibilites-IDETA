@@ -167,17 +167,22 @@ def traiter_fichier(demande_nom):
         end_year=fin.year, end_month=fin.month, end_day=fin.day
     )
 
-    # Find available time slots
-    dispo = trouver_disponibilites(events, debut, fin, h_debut, h_fin, duree, weekend, excludedDates)
-
     # Message to be sent
     lignes = [
         f"Information recherche : Début : {data['date']} Fin : {data['date_1']} Durée : {data['duree']} h",
         f"Horaire de travail : {h_debut.strftime('%H:%M')} - {h_fin.strftime('%H:%M')}",
         "Voici mes disponibilités :"
     ]
-    for d1, d2 in dispo:
-        lignes.append(f"{d1.strftime('%d/%m/%Y à %H:%M')} à {d2.strftime('%H:%M')}")
+
+    try:
+        # Find available time slots
+        dispo = trouver_disponibilites(events, debut, fin, h_debut, h_fin, duree, weekend, excludedDates)    
+
+        for d1, d2 in dispo:
+            lignes.append(f"{d1.strftime('%d/%m/%Y à %H:%M')} à {d2.strftime('%H:%M')}")
+    except Exception as e:
+        lignes.append(f"Erreur lors de la récupération des disponibilités : {str(e)}")
+        print(f"❌ Erreur pour {id_req} : {str(e)}")
 
     reponse_nom = f"reponse_{id_req}.txt"
 
