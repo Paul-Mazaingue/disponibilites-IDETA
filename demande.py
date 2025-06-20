@@ -9,6 +9,11 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from pytz import timezone
 from exchangelib.ewsdatetime import EWSDateTime, EWSDate
+import re
+import logging
+from jsonschema import validate, ValidationError
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 # Charger les variables d'environnement
 load_dotenv()
 
@@ -17,8 +22,26 @@ FOLDER_DEMANDES = os.getenv("FOLDER_DEMANDES")
 FOLDER_REPONSES = os.getenv("FOLDER_REPONSES")
 TIMEZONE = pytz.timezone(os.getenv("TIMEZONE", "Europe/Paris"))
 
-tmp_dir = tempfile.mkdtemp()
+tmp_dir = tempfile.mkdtemp(prefix="dispo_")
+os.chmod(tmp_dir, 0o700)
 UTC = pytz.utc
+
+REQUEST_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "string"},
+        "date": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+        "date_1": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+        "duree": {"type": "string"},
+        "heureDebutTravail": {"type": "string"},
+        "heureFinTravail": {"type": "string"},
+        "weekend": {"type": "string"},
+        "excludedDates": {"type": "string"},
+    },
+    "required": ["date", "date_1", "duree"],
+    "additionalProperties": False
+}
+
 
 jours_fr = {
     "Monday": "Lundi",
@@ -39,7 +62,7 @@ def format_duree(duree_heures_float):
 
 
 def normaliser_heure(valeur, par_defaut="09:00"):
-    print(f"Normalisation de l'heure : {valeur}, par défaut : {par_defaut}")
+    logger.info(f"Normalisation de l'heure : {valeur}, par défaut : {par_defaut}")
     if not valeur:
         return par_defaut
     parties = valeur.strip().split(":")
@@ -155,6 +178,10 @@ def trouver_disponibilites(events,
 
 
 def traiter_fichier(demande_nom):
+
+    if not re.match(r"^demande_[\w\-]+\.json$", demande_nom):
+        raise ValueError("Nom de fichier non autorisé")
+
     # id of the request
     id_req = demande_nom.replace("demande_", "").replace(".json", "")
 
@@ -166,7 +193,12 @@ def traiter_fichier(demande_nom):
     with open(chemin_demande, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    print(data)
+    try:
+        validate(instance=data, schema=REQUEST_SCHEMA)
+    except ValidationError as ve:
+        raise ValueError(f"Données JSON invalides : {ve.message}")
+
+    logger.info(data)
 
     # Parsing the request data
     debut = datetime.strptime(data["date"], "%Y-%m-%d").date()
@@ -213,7 +245,7 @@ def traiter_fichier(demande_nom):
             lignes.append(f"- {jour_fr} {d1.strftime('%d/%m')} de {d1.strftime('%H:%M')} à {d2.strftime('%H:%M')}")
     except Exception as e:
         lignes.append(f"Erreur lors de la récupération des disponibilités : {str(e)}")
-        print(f"❌ Erreur pour {id_req} : {str(e)}")
+        logger.error(f"❌ Erreur pour {id_req} : {str(e)}")
 
     lignes += [
         "\nN’hésitez pas à me dire ce qui vous conviendrait le mieux.",
@@ -231,7 +263,7 @@ def traiter_fichier(demande_nom):
     rclone_upload(chemin_rep, f"{FOLDER_REPONSES}/{reponse_nom}")
     rclone_delete(f"{FOLDER_DEMANDES}/{demande_nom}")
     
-    print(f"✅ Réponse générée pour : {id_req}")
+    logger.info(f"✅ Réponse générée pour : {id_req}")
 
 if __name__ == "__main__":
 
