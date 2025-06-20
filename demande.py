@@ -20,6 +20,24 @@ TIMEZONE = pytz.timezone(os.getenv("TIMEZONE", "Europe/Paris"))
 tmp_dir = tempfile.mkdtemp()
 UTC = pytz.utc
 
+jours_fr = {
+    "Monday": "Lundi",
+    "Tuesday": "Mardi",
+    "Wednesday": "Mercredi",
+    "Thursday": "Jeudi",
+    "Friday": "Vendredi",
+    "Saturday": "Samedi",
+    "Sunday": "Dimanche"
+}
+
+def format_duree(duree_heures_float):
+    heures = int(duree_heures_float)
+    minutes = round((duree_heures_float - heures) * 60)
+    if minutes == 0:
+        return f"{heures}h"
+    return f"{heures}h{minutes:02d}"
+
+
 def normaliser_heure(valeur, par_defaut="09:00"):
     print(f"Normalisation de l'heure : {valeur}, par défaut : {par_defaut}")
     if not valeur:
@@ -167,11 +185,19 @@ def traiter_fichier(demande_nom):
         end_year=fin.year, end_month=fin.month, end_day=fin.day
     )
 
+    duree_formatee = format_duree(float(data["duree"]))
+
+    rappel = [
+    f"🔎 <b>Rappel de votre demande :</b><br>",
+    f"Vous cherchiez un créneau de <b>{data['duree']} h</b> entre le <b>{debut.strftime('%d/%m/%Y')}</b> et le <b>{fin.strftime('%d/%m/%Y')}</b>, pendant vos horaires de travail (<b>{h_debut.strftime('%H:%M')} - {h_fin.strftime('%H:%M')}</b>).<br>",
+    "📬 <b>Message à copier-coller dans votre mail :</b>"
+    ]
+
     # Message to be sent
     lignes = [
-        f"Information recherche : Début : {data['date']} Fin : {data['date_1']} Durée : {data['duree']} h",
-        f"Horaire de travail : {h_debut.strftime('%H:%M')} - {h_fin.strftime('%H:%M')}",
-        "Voici mes disponibilités :"
+        "<pre><code>Bonjour,",
+        f"Voici mes disponibilités pour un rendez-vous d’une durée de {duree_formatee} :\n"
+        
     ]
 
     try:
@@ -179,16 +205,25 @@ def traiter_fichier(demande_nom):
         dispo = trouver_disponibilites(events, debut, fin, h_debut, h_fin, duree, weekend, excludedDates)    
 
         for d1, d2 in dispo:
-            lignes.append(f"{d1.strftime('%d/%m/%Y à %H:%M')} à {d2.strftime('%H:%M')}")
+            jour_en = d1.strftime('%A')
+            jour_fr = jours_fr.get(jour_en, jour_en)
+            lignes.append(f"- {jour_fr} {d1.strftime('%d/%m')} de {d1.strftime('%H:%M')} à {d2.strftime('%H:%M')}")
     except Exception as e:
         lignes.append(f"Erreur lors de la récupération des disponibilités : {str(e)}")
         print(f"❌ Erreur pour {id_req} : {str(e)}")
+
+    lignes += [
+        "\nN’hésitez pas à me dire ce qui vous conviendrait le mieux.",
+        "\nBien cordialement,"
+    ]
+
+    message = rappel + lignes + ["</code></pre>"]
 
     reponse_nom = f"reponse_{id_req}.txt"
 
     chemin_rep = os.path.join(tmp_dir, reponse_nom)
     with open(chemin_rep, "w", encoding="utf-8") as f:
-        f.write("<br>".join(lignes))
+        f.write("<br>".join(message))
 
     rclone_upload(chemin_rep, f"{FOLDER_REPONSES}/{reponse_nom}")
     rclone_delete(f"{FOLDER_DEMANDES}/{demande_nom}")
