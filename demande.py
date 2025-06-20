@@ -58,7 +58,8 @@ def trouver_disponibilites(events,
                            heure_fin,
                            duree,
                            weekend,
-                           excludedDates):
+                           excludedDates,
+                           inclure_journee_entiere=False):
     """
     events: liste d'événements Exchange
     debut, fin: dates (date objects)
@@ -74,6 +75,8 @@ def trouver_disponibilites(events,
 
         # a) EWSDate (date-only) → bloquer toute la journée
         if isinstance(s0, EWSDate) and not isinstance(s0, EWSDateTime):
+            if not inclure_journee_entiere:
+                continue
             s_py = datetime(s0.year, s0.month, s0.day, 0, 0)
             e_py = datetime(e0.year, e0.month, e0.day, 0, 0) + timedelta(days=1)
 
