@@ -198,7 +198,7 @@ def traiter_fichier(demande_nom):
 
     # Message to be sent
     lignes = [
-        "<pre><code>Bonjour,",
+        "<pre><code>Bonjour,\n",
         f"Voici mes disponibilités pour un rendez-vous d’une durée de {duree_formatee} :\n"
         
     ]
